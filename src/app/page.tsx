@@ -1,86 +1,55 @@
-import { LogIn, UserPlus } from 'lucide-react';
 import { ChatWindow } from '@/components/chat-window';
 import { GuideInfoBox } from '@/components/guide/GuideInfoBox';
-import { Button } from '@/components/ui/button';
-import { auth0 } from '@/lib/auth0';
 
-export default async function Home() {
-  const session = await auth0.getSession();
+const InfoCard = (
+  <GuideInfoBox>
+    <ul>
+      <li className="text-l">
+        🤝
+        <span className="ml-2">
+          This starter keeps only the essentials so you can focus on experimenting with{' '}
+          <a className="text-blue-500" href="https://langchain-ai.github.io/langgraphjs/" target="_blank" rel="noreferrer">
+            LangGraph.js
+          </a>
+          {' '}and{' '}
+          <a className="text-blue-500" href="https://js.langchain.com/docs/introduction/" target="_blank" rel="noreferrer">
+            LangChain.js
+          </a>
+          {' '}inside a{' '}
+          <a className="text-blue-500" href="https://nextjs.org/" target="_blank" rel="noreferrer">
+            Next.js
+          </a>
+          {' '}app.
+        </span>
+      </li>
+      <li className="hidden text-l md:block">
+        💻
+        <span className="ml-2">
+          The chat agent lives in <code>src/lib/agent.ts</code> and powers the{' '}
+          <code>POST /api/chat</code> endpoint.
+        </span>
+      </li>
+      <li className="hidden text-l md:block">
+        🎨
+        <span className="ml-2">
+          The UI is a single page built from <code>src/app/page.tsx</code> and{' '}
+          <code>src/components/chat-window.tsx</code>.
+        </span>
+      </li>
+      <li className="text-l">
+        👇
+        <span className="ml-2">Try asking something like <code>What can you help me with?</code>.</span>
+      </li>
+    </ul>
+  </GuideInfoBox>
+);
 
-  if (!session) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] my-auto gap-4">
-        <h2 className="text-xl">You are not logged in</h2>
-        <div className="flex gap-4">
-          <Button asChild variant="default" size="default">
-            <a href="/auth/login" className="flex items-center gap-2">
-              <LogIn />
-              <span>Login</span>
-            </a>
-          </Button>
-          <Button asChild variant="default" size="default">
-            <a href="/auth/login?screen_hint=signup">
-              <UserPlus />
-              <span>Sign up</span>
-            </a>
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  const InfoCard = (
-    <GuideInfoBox>
-      <ul>
-        <li className="text-l">
-          🤝
-          <span className="ml-2">
-            This template showcases a simple chatbot using{' '}
-            <a className="text-blue-500" href="https://langchain-ai.github.io/langgraphjs/" target="_blank">
-              LangGraph.js
-            </a>
-            ,{' '}
-            <a className="text-blue-500" href="https://js.langchain.com/docs/introduction/" target="_blank">
-              LangChain.js
-            </a>{' '}
-            and the Vercel{' '}
-            <a className="text-blue-500" href="https://sdk.vercel.ai/docs" target="_blank">
-              AI SDK
-            </a>{' '}
-            in a{' '}
-            <a className="text-blue-500" href="https://nextjs.org/" target="_blank">
-              Next.js
-            </a>{' '}
-            project.
-          </span>
-        </li>
-        <li className="hidden text-l md:block">
-          💻
-          <span className="ml-2">
-            You can find the prompt and model logic for this use-case in <code>app/api/chat/route.ts</code>.
-          </span>
-        </li>
-        <li className="hidden text-l md:block">
-          🎨
-          <span className="ml-2">
-            The main frontend logic is found in <code>app/page.tsx</code>.
-          </span>
-        </li>
-        <li className="text-l">
-          👇
-          <span className="ml-2">
-            Try asking e.g. <code>What can you help me with?</code> below!
-          </span>
-        </li>
-      </ul>
-    </GuideInfoBox>
-  );
-
+export default function Home() {
   return (
     <ChatWindow
-      endpoint={`${process.env.APP_BASE_URL}/api/chat`}
+      endpoint="/api/chat"
       emoji="🤖"
-      placeholder={`Hello ${session?.user?.name}, I'm your personal assistant. How can I help you today?`}
+      placeholder="Hello! I'm your friendly AI assistant. How can I help you today?"
       emptyStateComponent={InfoCard}
     />
   );

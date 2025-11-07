@@ -1,30 +1,24 @@
 'use client';
 
-import { useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom';
 import { ArrowDown, ArrowUpIcon, LoaderCircle } from 'lucide-react';
-import { useQueryState } from 'nuqs';
-import { useStream } from '@langchain/langgraph-sdk/react';
-import { type Message } from '@langchain/langgraph-sdk';
 
-import { TokenVaultInterruptHandler } from '@/components/auth0-ai/TokenVault/TokenVaultInterruptHandler';
-import { ChatMessageBubble } from '@/components/chat-message-bubble';
+import { ChatMessageBubble, type ChatMessage } from '@/components/chat-message-bubble';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/utils/cn';
 
-function ChatMessages(props: {
-  messages: Message[];
-  emptyStateComponent: ReactNode;
-  aiEmoji?: string;
-  className?: string;
-}) {
+function ChatMessages(props: { messages: ChatMessage[]; emptyStateComponent: React.ReactNode; aiEmoji?: string }) {
+  if (props.messages.length === 0) {
+    return <div>{props.emptyStateComponent}</div>;
+  }
+
   return (
     <div className="flex flex-col max-w-[768px] mx-auto pb-12 w-full">
-      {props.messages.map((m, i) => {
-        return <ChatMessageBubble key={m.id} message={m} aiEmoji={props.aiEmoji} allMessages={props.messages}/>;
-      })}
+      {props.messages.map(message => (
+        <ChatMessageBubble key={message.id} message={message} aiEmoji={props.aiEmoji} />
+      ))}
     </div>
   );
 }
@@ -47,12 +41,12 @@ function ChatInput(props: {
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   loading?: boolean;
   placeholder?: string;
-  children?: ReactNode;
+  children?: React.ReactNode;
   className?: string;
 }) {
   return (
     <form
-      onSubmit={(e) => {
+      onSubmit={e => {
         e.stopPropagation();
         e.preventDefault();
         props.onSubmit(e);
@@ -71,11 +65,7 @@ function ChatInput(props: {
         <div className="flex justify-between ml-4 mr-2 mb-2">
           <div className="flex gap-3">{props.children}</div>
 
-          <Button
-            className="rounded-full p-1.5 h-fit border dark:border-zinc-600"
-            type="submit"
-            disabled={props.loading}
-          >
+          <Button className="rounded-full p-1.5 h-fit border dark:border-zinc-600" type="submit" disabled={props.loading}>
             {props.loading ? <LoaderCircle className="animate-spin" /> : <ArrowUpIcon size={14} />}
           </Button>
         </div>
@@ -85,14 +75,13 @@ function ChatInput(props: {
 }
 
 function StickyToBottomContent(props: {
-  content: ReactNode;
-  footer?: ReactNode;
+  content: React.ReactNode;
+  footer?: React.ReactNode;
   className?: string;
   contentClassName?: string;
 }) {
   const context = useStickToBottomContext();
 
-  // scrollRef will also switch between overflow: unset to overflow: auto
   return (
     <div
       ref={context.scrollRef}
@@ -108,42 +97,83 @@ function StickyToBottomContent(props: {
   );
 }
 
+function createId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return Math.random().toString(36).slice(2);
+}
+
+function useChat(endpoint: string) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const conversationForApi = useMemo(
+    () => messages.map(({ role, content }) => ({ role, content })),
+    [messages]
+  );
+
+  async function sendMessage(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const userMessage: ChatMessage = {
+      id: createId(),
+      role: 'user',
+      content: trimmed,
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [...conversationForApi, { role: 'user', content: trimmed }] }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get a response.');
+      }
+
+      const data = (await response.json()) as { reply: string };
+      const assistantMessage: ChatMessage = {
+        id: createId(),
+        role: 'assistant',
+        content: data.reply,
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      toast.error('Something went wrong while generating a response.');
+      setMessages(prev => prev.filter(message => message.id !== userMessage.id));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return { messages, isLoading, sendMessage };
+}
+
 export function ChatWindow(props: {
   endpoint: string;
-  emptyStateComponent: ReactNode;
+  emptyStateComponent: React.ReactNode;
   placeholder?: string;
   emoji?: string;
 }) {
-  const [threadId, setThreadId] = useQueryState('threadId');
   const [input, setInput] = useState('');
-  const chat = useStream({
-    apiUrl: props.endpoint,
-    assistantId: 'agent',
-    threadId,
+  const { messages, isLoading, sendMessage } = useChat(props.endpoint);
 
-    onThreadId: setThreadId,
-    onError: (e: any) => {
-      console.error('Error: ', e);
-      toast.error(`Error while processing your request`, { description: e.message });
-    },
-  });
-
-  function isChatLoading(): boolean {
-    return chat.isLoading;
-  }
-
-  async function sendMessage(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (isChatLoading()) return;
-    chat.submit(
-      { messages: [{ type: 'human', content: input }] },
-      {
-        optimisticValues: (prev) => ({
-          messages: [...((prev?.messages as []) ?? []), { type: 'human', content: input, id: 'temp' }],
-        }),
-      },
-    );
+    if (isLoading) return;
+
+    const currentInput = input;
     setInput('');
+    await sendMessage(currentInput);
   }
 
   return (
@@ -152,34 +182,25 @@ export function ChatWindow(props: {
         className="absolute inset-0"
         contentClassName="py-8 px-2"
         content={
-          chat.messages.length === 0 ? (
-            <div>{props.emptyStateComponent}</div>
-          ) : (
-            <>
-              <ChatMessages
-                aiEmoji={props.emoji}
-                messages={chat.messages}
-                emptyStateComponent={props.emptyStateComponent}
-              />
-              <div className="flex flex-col max-w-[768px] mx-auto pb-12 w-full">
-                <TokenVaultInterruptHandler interrupt={chat.interrupt} onFinish={() => chat.submit(null)} />
-              </div>
-            </>
-          )
+          <ChatMessages
+            messages={messages}
+            aiEmoji={props.emoji}
+            emptyStateComponent={props.emptyStateComponent}
+          />
         }
         footer={
           <div className="sticky bottom-8 px-2">
             <ScrollToBottom className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4" />
             <ChatInput
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onSubmit={sendMessage}
-              loading={isChatLoading()}
+              onChange={e => setInput(e.target.value)}
+              onSubmit={handleSubmit}
+              loading={isLoading}
               placeholder={props.placeholder ?? 'What can I help you with?'}
-            ></ChatInput>
+            />
           </div>
         }
-      ></StickyToBottomContent>
+      />
     </StickToBottom>
   );
 }
